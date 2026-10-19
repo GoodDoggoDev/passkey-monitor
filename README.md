@@ -1,109 +1,144 @@
-# 🏨 MFF 2026 Hotel Monitor Bot
+# Passkey Hotel Monitor
 
-Monitors the [Midwest FurFest 2026 Passkey booking page](https://book.passkey.com/event/51314789/owner/3293004/list/hotels) every 5 minutes and sends you a Telegram message when hotels become available or anything changes.
+[![Python 3.12](https://img.shields.io/badge/Python-3.12+-3776ab.svg?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![Playwright](https://img.shields.io/badge/Playwright-Chromium-2ea44f.svg?style=flat-square&logo=playwright&logoColor=white)](https://playwright.dev)
+[![Telegram](https://img.shields.io/badge/Telegram-Bot%20API-229ED9.svg?style=flat-square&logo=telegram&logoColor=white)](https://core.telegram.org/bots/api)
+[![Platform](https://img.shields.io/badge/Platform-Ubuntu%2024.04%20%7C%20GitHub%20Actions-555555.svg?style=flat-square)](https://github.com/GoodDoggoDev/passkey-monitor)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
 
-**Runs 24/7 on GitHub's servers for free — no PC needed.**
+Autonomous monitoring engine that tracks convention hotel blocks on **Passkey** and sends instant Telegram push alerts the second rooms become available.
 
----
-
-## ⚡ Quick Setup (5 minutes)
-
-### Step 1 — Create a new GitHub repo
-
-1. Go to [github.com/new](https://github.com/new)
-2. Name it: `passkey-monitor` (or whatever you want)
-3. Set it to **Private**
-4. **Don't** check any boxes (no README, no .gitignore)
-5. Click **Create repository**
-
-### Step 2 — Upload these files
-
-On the repo page, click **"uploading an existing file"** link, then drag and drop **ALL** the files from this folder:
-
-```
-C:\Users\Admin\.gemini\antigravity\scratch\passkey-monitor\
-```
-
-Make sure the folder structure looks like this in your repo:
-```
-├── .github/
-│   └── workflows/
-│       └── monitor.yml
-├── .gitignore
-├── hotel_state.json
-├── monitor.py
-├── requirements.txt
-└── README.md
-```
-
-> ⚠️ **Important:** The `.github` folder might be hidden on Windows.  
-> In File Explorer, click **View** → check **Hidden items** to see it.
-
-Click **Commit changes**.
-
-### Step 3 — Add your Telegram secrets
-
-1. In your repo, go to **Settings** → **Secrets and variables** → **Actions**
-2. Click **New repository secret**
-3. Add these two secrets:
-
-| Name | Value |
-|------|-------|
-| `TELEGRAM_BOT_TOKEN` | `8871228109:AAEw7_KWUahMtcLOHIQD7iwj0x5a8Z7BBr8` |
-| `TELEGRAM_CHAT_ID` | `5397005458` |
-
-### Step 4 — Enable Actions & do a test run
-
-1. Go to the **Actions** tab in your repo
-2. If prompted, click **"I understand my workflows, go ahead and enable them"**
-3. Click **"Passkey Hotel Monitor"** in the left sidebar
-4. Click **"Run workflow"** → **"Run workflow"** (green button)
-5. Wait ~30 seconds, then check your Telegram — you should get a startup message!
-
-### 🎉 That's it!
-
-The bot will now run every 5 minutes automatically. You'll get a Telegram message whenever hotels appear or availability changes.
+Built by furs, for furs. 100% free and open-source.
 
 ---
 
-## 📱 What the notifications look like
+## [ Architecture & Background ]
 
-**First run (startup confirmation):**
+Passkey convention reservation portals (such as Midwest FurFest) present specific challenges for automated tracking:
+- Sessions are killed after **10 idle minutes** with CSRF token expirations.
+- Property availability is rendered through **client-side JavaScript** (basic `curl` or `requests` scrapers only retrieve empty container markup).
+- Cancellations and inventory expansions release at odd hours with zero advance warning.
+
+This bot uses **Playwright** to navigate the reservation flow with a headless Chromium instance: resolves CSRF tokens, inputs arrival and departure dates, awaits single-page DOM hydration, diffs the live inventory against local state snapshots, and sends notifications via Telegram webhook.
+
+---
+
+## [ Quickstart ]
+
+### Method A: Ubuntu 24.04 Server (24/7 Daemon)
+
+Runs continuous checks every 5 minutes in the background:
+
+```bash
+# 1. Update system & install dependencies
+sudo apt update && sudo apt install -y python3 python3-pip python3-venv git
+
+# 2. Clone the repository
+git clone https://github.com/GoodDoggoDev/passkey-monitor.git
+cd passkey-monitor
+
+# 3. Create virtual environment & install requirements
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+playwright install chromium --with-deps
+
+# 4. Set credentials in start.sh
+nano start.sh
+# Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID, then save (Ctrl+O, Enter, Ctrl+X)
+
+# 5. Launch the daemon
+chmod +x start.sh
+nohup ./start.sh > monitor.log 2>&1 &
+
+# 6. View live output
+tail -f monitor.log
 ```
-🏨 Hotel Monitor Started — MFF 2026
 
-No hotels listed yet — monitoring for when they appear.
-Checking every 5 min. You'll be notified of any changes.
+#### Process Management
+```bash
+# View live logs:
+tail -f monitor.log
 
-🔗 Booking page
-```
+# Stop the monitor:
+pkill -f start.sh
 
-**When hotels change:**
-```
-🚨 HOTEL UPDATE — MFF 2026
-
-🆕 NEW HOTEL: Hyatt Regency O'Hare — $159/night
-🔄 CHANGED: Donald E. Stephens Convention Center
-   Availability: Sold Out → Available
-
-🔗 GO BOOK NOW!
+# Check if process is running:
+ps aux | grep monitor
 ```
 
 ---
 
-## ❓ FAQ
+### Method B: GitHub Actions (Cloud Cron)
 
-**Q: Is this really free?**  
-A: Yes. GitHub gives free accounts 2,000 Actions minutes/month. This bot uses ~150 minutes/month.
+Runs on GitHub-hosted Ubuntu runners with zero server overhead:
 
-**Q: How often does it check?**  
-A: Every 5 minutes. GitHub Actions cron may occasionally delay by 1-2 minutes.
+1. **Fork this repository** to your account (`https://github.com/GoodDoggoDev/passkey-monitor`).
+2. Go to **Settings** &rarr; **Secrets and variables** &rarr; **Actions** &rarr; click **New repository secret**.
+3. Add your secrets:
 
-**Q: How do I stop it?**  
-A: Go to **Actions** → **Passkey Hotel Monitor** → click the `...` menu → **Disable workflow**.
+| Secret Name | Example Value | Description |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | `1234567890:ABCdefGhIJKlmNoPQRsTUVwxyZ_123456` | API token from `@BotFather` |
+| `TELEGRAM_CHAT_ID` | `987654321` | Numeric ID from `@userinfobot` |
 
-**Q: How do I change the check frequency?**  
-A: Edit `.github/workflows/monitor.yml` and change `*/5` to `*/10` for every 10 minutes, etc.
+4. Go to the **Actions** tab, enable workflows, and click **Run workflow** to test.
 
-**Q: I'm not getting notifications?**  
-A: Make sure you've messaged your bot at least once on Telegram (just send it "hi"). Bots can't message you first until you've initiated a conversation.
+---
+
+## [ Configuration ]
+
+Parameters can be adjusted in `monitor.py` and `start.sh`:
+
+```python
+# monitor.py
+EVENT_URL = "https://book.passkey.com/event/51314789/owner/3293004/home"
+CHECKIN_DATE = "12/03/2026"
+CHECKOUT_DATE = "12/07/2026"
+```
+
+To modify check intervals, edit the `sleep` duration in `start.sh`:
+* `sleep 300` &mdash; 5 minutes (standard, recommended to avoid rate limits)
+* `sleep 120` &mdash; 2 minutes (rush hours)
+* `sleep 60` &mdash; 1 minute (high-frequency)
+
+---
+
+## [ Telegram Notification Previews ]
+
+**Inventory Change Alert:**
+```
+[ALERT] HOTEL LIST CHANGED — MFF 2026
+
+Active Properties (4):
+  * Holiday Inn Chicago O'Hare Airport
+  * Sonesta Chicago O'Hare Airport Rosemont
+  * Spark by Hilton Des Plaines Chicago O'Hare
+  * Staybridge Suites Chicago O'Hare - Rosemont
+
+Reserve: https://book.passkey.com/event/51314789/owner/3293004/home
+```
+
+**Cycle Heartbeat:**
+```
+[STATUS] MFF 2026 Hotel Monitor
+
+No new hotels — same list (4 properties active).
+Next check in 5 minutes.
+```
+
+---
+
+## [ Tech Stack ]
+
+- **Python 3.12**
+- **Playwright** &mdash; Headless Chromium automation
+- **Telegram Bot API** &mdash; Real-time push delivery
+- **JSON Snapshot Engine** &mdash; Differential state reconciliation
+
+---
+
+## [ Author ]
+
+Maintained by **GoodDoggoLuna** ([@GoodDoggoDev](https://github.com/GoodDoggoDev))  
+*First major engineering project — built for the community.*
