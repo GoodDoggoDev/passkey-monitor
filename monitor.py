@@ -101,42 +101,14 @@ def detect_page_type(html, url):
     return "unknown"
 
 
-def find_search_form(html):
-    """
-    Find the date search form on the landing/date page and extract its
-    action URL and any hidden fields.
-    """
-    soup = BeautifulSoup(html, "html.parser")
-    info = {"action": None, "method": "GET", "fields": {}}
-
-    # Look for forms with search-related fields
-    for form in soup.find_all("form"):
-        form_html = str(form).lower()
-        # Look for forms that have date inputs or search buttons
-        if any(kw in form_html for kw in ["checkin", "check-in", "check_in", "arrival", "search"]):
-            info["action"] = form.get("action", "")
-            info["method"] = (form.get("method", "GET")).upper()
-            # Collect hidden fields
-            for hidden in form.find_all("input", {"type": "hidden"}):
-                name = hidden.get("name")
-                value = hidden.get("value", "")
-                if name:
-                    info["fields"][name] = value
-            # Collect field names for date inputs
-            for inp in form.find_all("input"):
-                name = inp.get("name", "")
-                if name:
-                    info["fields"].setdefault(name, inp.get("value", ""))
-            return info
-
-    return info
-
-
 def fetch_hotel_page(session):
     """
     Navigate the full Passkey booking flow:
-      Splash → Attendee selection → Date search → Hotel list
-    Returns the hotel list HTML and final URL.
+      Splash → Attendee selection → Landing page (session established) → Hotel list
+
+    The date search on the landing page is JavaScript-driven (not a traditional
+    HTML form), so we can't submit it with requests. Instead, after establishing
+    a valid session with the attendee type, we navigate directly to /list/hotels.
     """
 
     # ═══════════════════════════════════════════════════════════
@@ -150,7 +122,6 @@ def fetch_hotel_page(session):
     page_type = detect_page_type(resp.text, resp.url)
     log(f"  Page type: {page_type}")
 
-    # If we somehow landed on the hotel list already, return it
     if page_type == "hotel_list":
         log("  → Already on hotel list!")
         return resp.text, resp.url
@@ -204,136 +175,124 @@ def fetch_hotel_page(session):
         log("  → Got hotel list after attendee selection!")
         return resp.text, resp.url
 
-    # Save intermediate page for debugging
-    save_debug_page(resp.text, "after_attendee_select")
-
-    # ═══════════════════════════════════════════════════════════
-    # STEP 4: We should be on the date/search page now
-    #         Submit search with MFF event dates
-    # ═══════════════════════════════════════════════════════════
-    log("STEP 4: Submitting date search...")
-    log(f"  Check-in: {CHECKIN_DATE} | Checkout: {CHECKOUT_DATE}")
-
-    # Update CSRF if the new page has a different token
+    # Update CSRF if the landing page has a new token
     new_csrf = extract_csrf(resp.text)
     if new_csrf:
         csrf = new_csrf
         session.headers["X-XSRF-TOKEN"] = csrf
+        log(f"  Updated CSRF: {csrf[:12]}...")
 
-    current_url = resp.url
-    current_html = resp.text
+    landing_url = resp.url
 
-    # Try to find and submit the search form
-    form_info = find_search_form(current_html)
-    log(f"  Search form info: action={form_info.get('action')}, method={form_info.get('method')}, fields={list(form_info.get('fields', {}).keys())}")
+    # ═══════════════════════════════════════════════════════════
+    # STEP 4: Navigate directly to /list/hotels
+    #
+    # The date search on the landing page is JavaScript-driven,
+    # so we skip it and go straight to the hotel list URL.
+    # We try multiple approaches:
+    #   a) GET /list/hotels (might work with session defaults)
+    #   b) GET /list/hotels with date query params
+    # ═══════════════════════════════════════════════════════════
+    log("STEP 4: Navigating to hotel list...")
 
-    # Build search parameters - try common Passkey field names
-    search_params = {}
-    if form_info.get("fields"):
-        search_params.update(form_info["fields"])
+    # ── Try A: Direct GET to /list/hotels ──────────────────────
+    log("  Try A: Direct GET /list/hotels...")
+    resp = session.get(
+        HOTELS_URL,
+        timeout=30,
+        allow_redirects=True,
+        headers={"Referer": landing_url},
+    )
+    resp.raise_for_status()
+    log(f"  Status: {resp.status_code} | URL: {resp.url}")
+    page_type = detect_page_type(resp.text, resp.url)
+    log(f"  Page type: {page_type}")
 
-    # Set date values using common parameter name patterns
-    date_param_names = {
-        "checkin": CHECKIN_DATE,
-        "checkout": CHECKOUT_DATE,
-        "checkIn": CHECKIN_DATE,
-        "checkOut": CHECKOUT_DATE,
+    if page_type == "hotel_list":
+        log("  → Got hotel list!")
+        return resp.text, resp.url
+
+    # ── Try B: GET with various date query param formats ───────
+    date_param_combos = [
+        {"checkInDate": CHECKIN_DATE, "checkOutDate": CHECKOUT_DATE, "rooms": "1", "guestsPerRoom": "1"},
+        {"checkin": CHECKIN_DATE, "checkout": CHECKOUT_DATE, "rooms": "1", "guests": "1"},
+        {"checkIn": CHECKIN_DATE, "checkOut": CHECKOUT_DATE, "numRooms": "1", "numGuests": "1"},
+        {"arrivalDate": CHECKIN_DATE, "departureDate": CHECKOUT_DATE, "rooms": "1"},
+        {"checkInDate": "12/03/2026", "checkOutDate": "12/07/2026", "rooms": "1", "guestsPerRoom": "1"},
+    ]
+
+    for i, params in enumerate(date_param_combos):
+        log(f"  Try B.{i+1}: GET /list/hotels with params {params}...")
+        resp = session.get(
+            HOTELS_URL,
+            params=params,
+            timeout=30,
+            allow_redirects=True,
+            headers={"Referer": landing_url},
+        )
+        resp.raise_for_status()
+        page_type = detect_page_type(resp.text, resp.url)
+        log(f"  Status: {resp.status_code} | Page type: {page_type}")
+
+        if page_type == "hotel_list":
+            log("  → Got hotel list!")
+            return resp.text, resp.url
+
+    # ── Try C: POST to /list/hotels with date params ───────────
+    log("  Try C: POST /list/hotels with date params...")
+    post_data = {
         "checkInDate": CHECKIN_DATE,
         "checkOutDate": CHECKOUT_DATE,
-        "arrivalDate": CHECKIN_DATE,
-        "departureDate": CHECKOUT_DATE,
-        "arrival": CHECKIN_DATE,
-        "departure": CHECKOUT_DATE,
-        "startDate": CHECKIN_DATE,
-        "endDate": CHECKOUT_DATE,
+        "rooms": "1",
+        "guestsPerRoom": "1",
     }
-
-    # If we found form fields, match them with date values
-    found_date_fields = False
-    for field_name in search_params:
-        lower_name = field_name.lower()
-        for param_name, param_value in date_param_names.items():
-            if param_name.lower() == lower_name:
-                search_params[field_name] = param_value
-                found_date_fields = True
-
-    # If no date fields found in form, add common ones
-    if not found_date_fields:
-        search_params["checkInDate"] = CHECKIN_DATE
-        search_params["checkOutDate"] = CHECKOUT_DATE
-
-    # Add room/guest defaults
-    room_params = {"rooms": "1", "numRooms": "1", "guestsPerRoom": "1", "numGuests": "1"}
-    for key, val in room_params.items():
-        if key not in search_params:
-            search_params[key] = val
-
     if csrf:
-        search_params["_csrf"] = csrf
+        post_data["_csrf"] = csrf
 
-    # Determine where to submit the search
-    search_url = HOTELS_URL  # Default target
-    if form_info.get("action"):
-        search_url = urljoin(current_url, form_info["action"])
-
-    log(f"  Submitting search to: {search_url}")
-    log(f"  Parameters: {search_params}")
-
-    # Try POST first (most common for Passkey search forms)
     resp = session.post(
-        search_url,
-        data=search_params,
+        HOTELS_URL,
+        data=post_data,
         timeout=30,
         allow_redirects=True,
         headers={
-            "Referer": current_url,
+            "Referer": landing_url,
             "Origin": BASE_URL,
             "Content-Type": "application/x-www-form-urlencoded",
         },
     )
     resp.raise_for_status()
-    log(f"  Status: {resp.status_code} | URL: {resp.url}")
-
     page_type = detect_page_type(resp.text, resp.url)
-    log(f"  Page type: {page_type}")
+    log(f"  Status: {resp.status_code} | Page type: {page_type}")
 
     if page_type == "hotel_list":
         log("  → Got hotel list!")
         return resp.text, resp.url
 
-    # If POST didn't work, try GET with params
-    log("  POST didn't reach hotel list, trying GET...")
+    # ── Try D: Navigate back to landing and try /landing with params
+    log("  Try D: GET /landing with date params...")
     resp = session.get(
-        HOTELS_URL,
-        params={
-            "checkInDate": CHECKIN_DATE,
-            "checkOutDate": CHECKOUT_DATE,
-            "rooms": "1",
-            "guestsPerRoom": "1",
-        },
+        LANDING_URL,
+        params={"checkInDate": CHECKIN_DATE, "checkOutDate": CHECKOUT_DATE},
         timeout=30,
         allow_redirects=True,
     )
     resp.raise_for_status()
-    log(f"  Status: {resp.status_code} | URL: {resp.url}")
-
     page_type = detect_page_type(resp.text, resp.url)
-    log(f"  Page type: {page_type}")
+    log(f"  Status: {resp.status_code} | Page type: {page_type}")
 
     if page_type == "hotel_list":
         log("  → Got hotel list!")
         return resp.text, resp.url
 
     # ═══════════════════════════════════════════════════════════
-    # STEP 5: Fallback — try direct navigation to hotel list
+    # STEP 5: None of the above worked — return whatever we have
+    #         and log the page for debugging
     # ═══════════════════════════════════════════════════════════
-    log("STEP 5: Fallback — trying direct hotel list URL...")
-    resp = session.get(HOTELS_URL, timeout=30, allow_redirects=True)
-    resp.raise_for_status()
-    log(f"  Status: {resp.status_code} | URL: {resp.url}")
-
+    log("STEP 5: Could not reach hotel list page — dumping final page for debug")
     save_debug_page(resp.text, "final_page")
 
+    # Return the last response — even if it's the landing page,
+    # we can still monitor it for changes (e.g. "Now accepting" → hotel list)
     return resp.text, resp.url
 
 
@@ -341,7 +300,6 @@ def save_debug_page(html, label):
     """Save a page snapshot for debugging (visible in GitHub Actions logs)."""
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text(separator="\n", strip=True)
-    # Print first 80 lines for debugging
     lines = [l for l in text.split("\n") if l.strip()][:80]
     log(f"  ── DEBUG [{label}] page text (first 80 lines) ──")
     for line in lines:
