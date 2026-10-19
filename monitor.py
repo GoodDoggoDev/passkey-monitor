@@ -18,8 +18,8 @@ from datetime import datetime, timezone
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 # ── Config (from GitHub Secrets / environment) ─────────────────
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8871228109:AAEw7_KWUahMtcLOHIQD7iwj0x5a8Z7BBr8")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "5397005458")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 # ── Passkey URLs ───────────────────────────────────────────────
 BASE_URL = "https://book.passkey.com"
