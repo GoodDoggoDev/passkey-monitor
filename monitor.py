@@ -4,22 +4,18 @@ Passkey Hotel Booking Monitor — Midwest FurFest 2026
 Monitors hotel availability and sends Telegram alerts on changes.
 Designed to run as a GitHub Actions cron job (no PC needed).
 
-Flow:
-  1. Load splash page → select "Attendee" → submit form
-  2. Land on date/search page → submit search with event dates
-  3. Parse hotel list → compare with previous state → notify via Telegram
+Uses Playwright (headless browser) because the Passkey hotel list
+is a JavaScript SPA that loads hotel data via XHR/fetch calls.
 """
 
-import requests
-from bs4 import BeautifulSoup
 import json
 import os
 import sys
-import hashlib
-import random
 import re
+import hashlib
+import requests as http_requests
 from datetime import datetime, timezone
-from urllib.parse import urljoin, urlparse, parse_qs, urlencode
+from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 # ── Config (from GitHub Secrets / environment) ─────────────────
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8871228109:AAEw7_KWUahMtcLOHIQD7iwj0x5a8Z7BBr8")
@@ -29,25 +25,12 @@ TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "5397005458")
 BASE_URL = "https://book.passkey.com"
 EVENT_PATH = "/event/51314789/owner/3293004"
 SPLASH_URL = f"{BASE_URL}{EVENT_PATH}/home"
-GROUP_URL = f"{BASE_URL}{EVENT_PATH}/home/group"
-LANDING_URL = f"{BASE_URL}{EVENT_PATH}/landing"
-HOTELS_URL = f"{BASE_URL}{EVENT_PATH}/list/hotels"
-
-ATTENDEE_GROUP_TYPE_ID = "221660598"
 
 # MFF 2026 event dates
-CHECKIN_DATE = "2026-12-03"
-CHECKOUT_DATE = "2026-12-07"
+CHECKIN_DATE = "12/03/2026"
+CHECKOUT_DATE = "12/07/2026"
 
 STATE_FILE = "hotel_state.json"
-
-USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
-]
 
 
 def log(msg):
@@ -55,467 +38,289 @@ def log(msg):
     print(f"[{ts}] {msg}")
 
 
-def create_session():
-    """Create a fresh HTTP session with realistic browser headers."""
-    s = requests.Session()
-    ua = random.choice(USER_AGENTS)
-    s.headers.update({
-        "User-Agent": ua,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-    })
-    return s
-
-
-def extract_csrf(html):
-    """Extract CSRF / XSRF token from page HTML."""
-    soup = BeautifulSoup(html, "html.parser")
-    token_input = soup.find("input", {"name": "_csrf"})
-    if token_input and token_input.get("value"):
-        return token_input["value"]
-    m = re.search(r"'X-XSRF-TOKEN':\s*'([^']+)'", html)
-    if m:
-        return m.group(1)
-    return None
-
-
-def detect_page_type(html, url):
-    """Figure out which page we're on based on content and URL."""
-    lower_html = html.lower()
-    lower_url = url.lower()
-
-    if "/list/hotels" in lower_url:
-        return "hotel_list"
-    if "hotels for" in lower_html and ("rooms available" in lower_html or "sold out" in lower_html):
-        return "hotel_list"
-    if "select attendee type" in lower_html or "make reservation" in lower_html:
-        return "splash"
-    if "check in" in lower_html and "checkout" in lower_html and "search" in lower_html:
-        return "date_search"
-    if "/landing" in lower_url:
-        return "date_search"
-
-    return "unknown"
-
-
-def fetch_hotel_page(session):
+def fetch_hotels_with_browser():
     """
-    Navigate the full Passkey booking flow:
-      Splash → Attendee selection → Landing page (session established) → Hotel list
+    Use a headless browser to navigate the full Passkey booking flow
+    and extract hotel data from the rendered page.
 
-    The date search on the landing page is JavaScript-driven (not a traditional
-    HTML form), so we can't submit it with requests. Instead, after establishing
-    a valid session with the attendee type, we navigate directly to /list/hotels.
+    Flow:
+      1. Load splash page
+      2. Select "Attendee" → click "Make reservation"
+      3. Fill in dates → click "Search"
+      4. Wait for hotel list to load
+      5. Extract hotel data from rendered DOM
     """
-
-    # ═══════════════════════════════════════════════════════════
-    # STEP 1: Load splash page
-    # ═══════════════════════════════════════════════════════════
-    log("STEP 1: Loading splash page...")
-    resp = session.get(SPLASH_URL, timeout=30)
-    resp.raise_for_status()
-    log(f"  Status: {resp.status_code} | URL: {resp.url}")
-
-    page_type = detect_page_type(resp.text, resp.url)
-    log(f"  Page type: {page_type}")
-
-    if page_type == "hotel_list":
-        log("  → Already on hotel list!")
-        return resp.text, resp.url
-
-    # Extract CSRF token
-    csrf = extract_csrf(resp.text)
-    if csrf:
-        log(f"  CSRF token: {csrf[:12]}...")
-        session.headers["X-XSRF-TOKEN"] = csrf
-    else:
-        log("  ⚠ No CSRF token found")
-
-    # ═══════════════════════════════════════════════════════════
-    # STEP 2: Accept cookies (non-critical)
-    # ═══════════════════════════════════════════════════════════
-    log("STEP 2: Accepting cookies...")
-    try:
-        session.post(f"{BASE_URL}/cookieBanner/hideWithSession", timeout=10)
-        log("  → Done")
-    except Exception:
-        log("  → Failed (non-critical)")
-
-    # ═══════════════════════════════════════════════════════════
-    # STEP 3: Submit attendee type form ("Attendee")
-    # ═══════════════════════════════════════════════════════════
-    log("STEP 3: Selecting 'Attendee' and submitting...")
-    form_data = {
-        "groupTypeId": ATTENDEE_GROUP_TYPE_ID,
-    }
-    if csrf:
-        form_data["_csrf"] = csrf
-
-    resp = session.post(
-        GROUP_URL,
-        data=form_data,
-        timeout=30,
-        allow_redirects=True,
-        headers={
-            "Referer": SPLASH_URL,
-            "Origin": BASE_URL,
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-    )
-    resp.raise_for_status()
-    log(f"  Status: {resp.status_code} | URL: {resp.url}")
-
-    page_type = detect_page_type(resp.text, resp.url)
-    log(f"  Page type: {page_type}")
-
-    if page_type == "hotel_list":
-        log("  → Got hotel list after attendee selection!")
-        return resp.text, resp.url
-
-    # Update CSRF if the landing page has a new token
-    new_csrf = extract_csrf(resp.text)
-    if new_csrf:
-        csrf = new_csrf
-        session.headers["X-XSRF-TOKEN"] = csrf
-        log(f"  Updated CSRF: {csrf[:12]}...")
-
-    landing_url = resp.url
-
-    # ═══════════════════════════════════════════════════════════
-    # STEP 4: Navigate directly to /list/hotels
-    #
-    # The date search on the landing page is JavaScript-driven,
-    # so we skip it and go straight to the hotel list URL.
-    # We try multiple approaches:
-    #   a) GET /list/hotels (might work with session defaults)
-    #   b) GET /list/hotels with date query params
-    # ═══════════════════════════════════════════════════════════
-    log("STEP 4: Navigating to hotel list...")
-
-    # ── Try A: Direct GET to /list/hotels ──────────────────────
-    log("  Try A: Direct GET /list/hotels...")
-    resp = session.get(
-        HOTELS_URL,
-        timeout=30,
-        allow_redirects=True,
-        headers={"Referer": landing_url},
-    )
-    resp.raise_for_status()
-    log(f"  Status: {resp.status_code} | URL: {resp.url}")
-    page_type = detect_page_type(resp.text, resp.url)
-    log(f"  Page type: {page_type}")
-
-    if page_type == "hotel_list":
-        log("  → Got hotel list!")
-        return resp.text, resp.url
-
-    # ── Try B: GET with various date query param formats ───────
-    date_param_combos = [
-        {"checkInDate": CHECKIN_DATE, "checkOutDate": CHECKOUT_DATE, "rooms": "1", "guestsPerRoom": "1"},
-        {"checkin": CHECKIN_DATE, "checkout": CHECKOUT_DATE, "rooms": "1", "guests": "1"},
-        {"checkIn": CHECKIN_DATE, "checkOut": CHECKOUT_DATE, "numRooms": "1", "numGuests": "1"},
-        {"arrivalDate": CHECKIN_DATE, "departureDate": CHECKOUT_DATE, "rooms": "1"},
-        {"checkInDate": "12/03/2026", "checkOutDate": "12/07/2026", "rooms": "1", "guestsPerRoom": "1"},
-    ]
-
-    for i, params in enumerate(date_param_combos):
-        log(f"  Try B.{i+1}: GET /list/hotels with params {params}...")
-        resp = session.get(
-            HOTELS_URL,
-            params=params,
-            timeout=30,
-            allow_redirects=True,
-            headers={"Referer": landing_url},
-        )
-        resp.raise_for_status()
-        page_type = detect_page_type(resp.text, resp.url)
-        log(f"  Status: {resp.status_code} | Page type: {page_type}")
-
-        if page_type == "hotel_list":
-            log("  → Got hotel list!")
-            return resp.text, resp.url
-
-    # ── Try C: POST to /list/hotels with date params ───────────
-    log("  Try C: POST /list/hotels with date params...")
-    post_data = {
-        "checkInDate": CHECKIN_DATE,
-        "checkOutDate": CHECKOUT_DATE,
-        "rooms": "1",
-        "guestsPerRoom": "1",
-    }
-    if csrf:
-        post_data["_csrf"] = csrf
-
-    resp = session.post(
-        HOTELS_URL,
-        data=post_data,
-        timeout=30,
-        allow_redirects=True,
-        headers={
-            "Referer": landing_url,
-            "Origin": BASE_URL,
-            "Content-Type": "application/x-www-form-urlencoded",
-        },
-    )
-    resp.raise_for_status()
-    page_type = detect_page_type(resp.text, resp.url)
-    log(f"  Status: {resp.status_code} | Page type: {page_type}")
-
-    if page_type == "hotel_list":
-        log("  → Got hotel list!")
-        return resp.text, resp.url
-
-    # ── Try D: Navigate back to landing and try /landing with params
-    log("  Try D: GET /landing with date params...")
-    resp = session.get(
-        LANDING_URL,
-        params={"checkInDate": CHECKIN_DATE, "checkOutDate": CHECKOUT_DATE},
-        timeout=30,
-        allow_redirects=True,
-    )
-    resp.raise_for_status()
-    page_type = detect_page_type(resp.text, resp.url)
-    log(f"  Status: {resp.status_code} | Page type: {page_type}")
-
-    if page_type == "hotel_list":
-        log("  → Got hotel list!")
-        return resp.text, resp.url
-
-    # ═══════════════════════════════════════════════════════════
-    # STEP 5: None of the above worked — return whatever we have
-    #         and log the page for debugging
-    # ═══════════════════════════════════════════════════════════
-    log("STEP 5: Could not reach hotel list page — dumping final page for debug")
-    save_debug_page(resp.text, "final_page")
-
-    # Return the last response — even if it's the landing page,
-    # we can still monitor it for changes (e.g. "Now accepting" → hotel list)
-    return resp.text, resp.url
-
-
-def save_debug_page(html, label):
-    """Save a page snapshot for debugging (visible in GitHub Actions logs)."""
-    soup = BeautifulSoup(html, "html.parser")
-    text = soup.get_text(separator="\n", strip=True)
-    lines = [l for l in text.split("\n") if l.strip()][:80]
-    log(f"  ── DEBUG [{label}] page text (first 80 lines) ──")
-    for line in lines:
-        log(f"  | {line[:120]}")
-    log(f"  ── END DEBUG [{label}] ──")
-
-
-def parse_hotels(html):
-    """
-    Parse hotel cards from the hotel list page.
-
-    Based on the actual page structure observed:
-    - Each hotel is in a card with availability badge, name, distance, price
-    - Badges say "Rooms available" or "Sold out"
-    - Names are in links/headings
-    - Prices show as "XXX.XX USD"
-    """
-    soup = BeautifulSoup(html, "html.parser")
     hotels = []
 
-    # ── Known non-hotel strings to filter out ──────────────────
-    BLACKLIST = {
-        "contact information", "session warning", "session warning!",
-        "manage existing reservation", "start over", "start over?",
-        "multiple tabs warning", "manage cookie preferences",
-        "strictly necessary", "marketing", "cookie preferences",
-        "accept all cookies", "accept only essential cookies",
-        "customize preferences", "show details", "hide details",
-        "save preferences", "supported browsers", "privacy policy",
-        "close button", "cancel", "next", "ok", "continue",
-        "now accepting reservations!", "midwest furfest 2026",
-        "search", "update search", "more filters",
-        "hotels for midwest furfest 2026",
-    }
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            viewport={"width": 1280, "height": 900},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        )
+        page = context.new_page()
 
-    def is_blacklisted(name):
-        return name.lower().strip() in BLACKLIST or len(name) < 4
-
-    # ── Strategy 1: Find hotel cards by common selectors ───────
-    card_selectors = [
-        # Common Passkey hotel card selectors
-        "[class*='hotel-card']",
-        "[class*='hotelCard']",
-        "[class*='property-card']",
-        "[class*='propertyCard']",
-        "[class*='hotel-result']",
-        "[class*='hotel-item']",
-        "[class*='hotelItem']",
-        "[data-hotel-id]",
-        "[data-property-id]",
-        # Grid item patterns
-        "[class*='hotel'] [class*='card']",
-        "[class*='search-result']",
-        "[class*='result-card']",
-    ]
-
-    hotel_elements = []
-    for sel in card_selectors:
         try:
-            found = soup.select(sel)
-            if found and len(found) <= 30:  # Sanity check
-                log(f"  Selector '{sel}' matched {len(found)} elements")
-                hotel_elements = found
-                break
-        except Exception:
-            continue
+            # ── STEP 1: Load splash page ──────────────────────
+            log("STEP 1: Loading splash page...")
+            page.goto(SPLASH_URL, wait_until="domcontentloaded", timeout=30000)
+            log(f"  URL: {page.url}")
 
-    for el in hotel_elements:
-        hotel = extract_hotel_from_element(el, BLACKLIST)
-        if hotel and hotel.get("name") and not is_blacklisted(hotel["name"]):
-            hotels.append(hotel)
+            # Accept cookies if banner appears
+            try:
+                accept_btn = page.locator("#acceptAllBtn")
+                if accept_btn.is_visible(timeout=3000):
+                    accept_btn.click()
+                    log("  Accepted cookies")
+            except Exception:
+                log("  No cookie banner (or already accepted)")
 
-    if hotels:
-        return hotels
+            # ── STEP 2: Select "Attendee" and submit ──────────
+            log("STEP 2: Selecting 'Attendee' and clicking 'Make reservation'...")
 
-    # ── Strategy 2: Find cards by looking for price patterns ───
-    # Look for elements containing price text like "163.00 USD"
-    log("  Strategy 1 found nothing, trying price-pattern strategy...")
-    price_pattern = re.compile(r'\d{2,4}\.\d{2}\s*USD', re.IGNORECASE)
+            # Select "Attendee" from dropdown
+            page.select_option("#groupTypeId", value="221660598")
+            page.wait_for_timeout(500)
 
-    # Find all elements with price text and walk up to find the card container
-    for el in soup.find_all(string=price_pattern):
-        # Walk up the tree to find a reasonable container
-        container = el.parent
-        for _ in range(8):
-            if container is None or container.name in ["body", "html", None]:
-                break
-            # Check if this container has enough content to be a hotel card
-            text = container.get_text(strip=True)
-            if len(text) > 50 and price_pattern.search(text):
-                # Check if there are sibling containers (indicating a list)
-                siblings = container.find_parent().find_all(container.name, recursive=False) if container.find_parent() else []
-                if len(siblings) >= 2:
-                    # Found a list of cards!
-                    log(f"  Found {len(siblings)} card-like siblings using <{container.name}> tag")
-                    for sib in siblings:
-                        hotel = extract_hotel_from_element(sib, BLACKLIST)
-                        if hotel and hotel.get("name") and not is_blacklisted(hotel["name"]):
-                            hotels.append(hotel)
-                    if hotels:
-                        return hotels
-            container = container.parent
+            # Click "Make reservation"
+            page.click("#submit-btn")
+            log("  Submitted attendee form")
 
-    # ── Strategy 3: Text-based extraction ──────────────────────
-    log("  Strategy 2 found nothing, trying text extraction...")
-    page_text = soup.get_text()
+            # Wait for navigation to landing page
+            page.wait_for_load_state("domcontentloaded", timeout=15000)
+            log(f"  Landed on: {page.url}")
 
-    # Look for hotel brand names near prices
-    hotel_brands = (
-        r'Holiday Inn|Hilton|Hyatt|Marriott|Sheraton|Westin|Renaissance|'
-        r'DoubleTree|Hampton|Crowne Plaza|Embassy Suites|Radisson|'
-        r'Best Western|Comfort|Fairfield|SpringHill|Courtyard|'
-        r'Residence Inn|Staybridge|Spark by|Homewood|La Quinta|'
-        r'Wyndham|InterContinental|Kimpton|W Hotel|Aloft|'
-        r'Four Points|AC Hotel|Moxy|Tru by|Home2|Candlewood'
-    )
-    brand_matches = re.finditer(
-        rf'({hotel_brands})[^\n<]{{0,80}}',
-        page_text, re.IGNORECASE
-    )
-    for match in brand_matches:
-        name = match.group(0).strip()
-        # Clean up the name (stop at common delimiters)
-        name = re.split(r'(?:Rooms starting|View hotel|View rates|\d{2,3}\.\d{2})', name)[0].strip()
-        if name and len(name) > 5 and not is_blacklisted(name):
-            hotel = {"name": name, "source": "text-match"}
-            # Try to find a nearby price
-            price_match = re.search(
-                r'(\d{2,4}\.\d{2})\s*USD',
-                page_text[match.start():match.start() + 300]
-            )
-            if price_match:
-                hotel["price"] = f"{price_match.group(1)} USD"
-            hotels.append(hotel)
+            # ── STEP 3: Fill in dates and search ──────────────
+            log("STEP 3: Filling in dates and searching...")
 
-    # Deduplicate by name
+            # Wait for the date inputs to appear
+            page.wait_for_timeout(2000)
+
+            # Try to find and fill the check-in date
+            checkin_filled = False
+            checkout_filled = False
+
+            # Look for date input fields — try various selectors
+            date_selectors = [
+                # Input fields with placeholder or label
+                "input[placeholder*='Check']",
+                "input[aria-label*='Check']",
+                "input[aria-label*='check']",
+                "input[name*='checkIn']",
+                "input[name*='checkin']",
+                "input[name*='arrival']",
+                "input[id*='checkIn']",
+                "input[id*='checkin']",
+                # Generic date inputs
+                "input[type='date']",
+                "input[type='text'][class*='date']",
+            ]
+
+            # Try to find check-in input
+            for sel in date_selectors:
+                try:
+                    inputs = page.locator(sel)
+                    count = inputs.count()
+                    if count >= 1:
+                        log(f"  Found {count} date input(s) with selector: {sel}")
+                        # First match = check-in, second = checkout
+                        inputs.first.click()
+                        inputs.first.fill(CHECKIN_DATE)
+                        checkin_filled = True
+                        if count >= 2:
+                            inputs.nth(1).click()
+                            inputs.nth(1).fill(CHECKOUT_DATE)
+                            checkout_filled = True
+                        break
+                except Exception:
+                    continue
+
+            if not checkin_filled:
+                log("  Could not find date inputs — trying to click Search anyway...")
+
+            # Click the Search button
+            search_clicked = False
+            search_selectors = [
+                "button:has-text('Search')",
+                "a:has-text('Search')",
+                "input[value='Search']",
+                "button[type='submit']:has-text('Search')",
+                "[class*='search'] button",
+            ]
+            for sel in search_selectors:
+                try:
+                    btn = page.locator(sel).first
+                    if btn.is_visible(timeout=2000):
+                        btn.click()
+                        search_clicked = True
+                        log(f"  Clicked Search button ({sel})")
+                        break
+                except Exception:
+                    continue
+
+            if not search_clicked:
+                log("  ⚠ Could not find Search button — trying direct navigation...")
+                page.goto(f"{BASE_URL}{EVENT_PATH}/list/hotels", wait_until="domcontentloaded", timeout=30000)
+
+            # ── STEP 4: Wait for hotel list to load ───────────
+            log("STEP 4: Waiting for hotel list to load...")
+
+            # Wait for hotel-related content to appear
+            try:
+                page.wait_for_selector(
+                    "text=Hotels for, text=Rooms available, text=Sold out, text=rooms available",
+                    timeout=15000,
+                )
+                log("  Hotel list content detected!")
+            except PWTimeout:
+                log("  ⚠ Timeout waiting for hotel content")
+
+            # Give it extra time to fully render
+            page.wait_for_timeout(3000)
+            log(f"  Final URL: {page.url}")
+
+            # ── STEP 5: Extract hotel data from DOM ───────────
+            log("STEP 5: Extracting hotel data...")
+
+            # Get the full page text for debugging
+            page_text = page.inner_text("body")
+            log(f"  Page text length: {len(page_text)} chars")
+
+            # Try to extract hotels using JavaScript in the page
+            hotels = page.evaluate("""() => {
+                const hotels = [];
+
+                // Strategy 1: Look for elements that contain hotel info patterns
+                // Find all elements that contain a price like "$XXX" or "XXX.XX USD"
+                const allElements = document.querySelectorAll('*');
+                const pricePattern = /\\$\\d{2,4}|\\d{2,4}\\.\\d{2}\\s*USD/;
+                const hotelContainers = new Set();
+
+                for (const el of allElements) {
+                    // Look for elements with "Rooms available" or "Sold out" badges
+                    const text = el.textContent || '';
+                    if ((text.includes('Rooms available') || text.includes('Sold out') || text.includes('Waitlist'))
+                        && pricePattern.test(text)
+                        && text.length < 2000  // Not too large (not the whole page)
+                        && text.length > 30    // Not too small
+                        && !hotelContainers.has(el.parentElement)) {
+
+                        // This might be a hotel card - check if it has siblings (other cards)
+                        const parent = el.parentElement;
+                        if (parent) {
+                            const siblings = parent.querySelectorAll(':scope > ' + el.tagName);
+                            if (siblings.length >= 2) {
+                                // Found a list of cards!
+                                siblings.forEach(sib => hotelContainers.add(sib));
+                            } else {
+                                hotelContainers.add(el);
+                            }
+                        }
+                    }
+                }
+
+                // Extract data from each container
+                for (const container of hotelContainers) {
+                    const text = container.textContent || '';
+                    const hotel = {};
+
+                    // Find hotel name — usually in a heading or link
+                    const nameEl = container.querySelector('h1, h2, h3, h4, h5, a[href*="hotel"]');
+                    if (nameEl) {
+                        hotel.name = nameEl.textContent.trim();
+                    }
+
+                    // If no heading found, try to get the first significant text
+                    if (!hotel.name) {
+                        const links = container.querySelectorAll('a');
+                        for (const link of links) {
+                            const linkText = link.textContent.trim();
+                            if (linkText.length > 5 && linkText.length < 80
+                                && !linkText.includes('View') && !linkText.includes('Select')
+                                && !linkText.includes('Show') && !linkText.includes('map')) {
+                                hotel.name = linkText;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Status
+                    if (text.includes('Rooms available')) hotel.status = 'Rooms available';
+                    else if (text.includes('Sold out')) hotel.status = 'Sold out';
+                    else if (text.includes('Waitlist')) hotel.status = 'Waitlist';
+
+                    // Price
+                    const priceMatch = text.match(/(\\d{2,4}\\.\\d{2})\\s*USD/);
+                    if (priceMatch) hotel.price = priceMatch[1] + ' USD';
+                    const dollarMatch = text.match(/\\$(\\d{2,4})/);
+                    if (!hotel.price && dollarMatch) hotel.price = '$' + dollarMatch[1];
+
+                    // Distance
+                    const distMatch = text.match(/([\\.\\d]+)\\s*miles?/i);
+                    if (distMatch) hotel.distance = distMatch[1] + ' miles';
+
+                    if (hotel.name && hotel.name.length > 3) {
+                        hotels.push(hotel);
+                    }
+                }
+
+                // Strategy 2: If Strategy 1 found nothing, try a broader text search
+                if (hotels.length === 0) {
+                    const bodyText = document.body.innerText;
+                    const hotelBrands = [
+                        'Aloft', 'Courtyard', 'Crowne Plaza', 'Hilton Garden Inn',
+                        'Holiday Inn', 'Hyatt Centric', 'Hyatt Regency', 'Loews',
+                        'Marriott Suites', 'Marriott', 'Sonesta', 'Spark by Hilton',
+                        'Staybridge Suites', 'Staybridge', 'Hampton', 'DoubleTree',
+                        'Embassy Suites', 'Radisson', 'Best Western', 'Comfort',
+                        'Fairfield', 'SpringHill', 'Residence Inn', 'Homewood',
+                    ];
+                    for (const brand of hotelBrands) {
+                        if (bodyText.includes(brand)) {
+                            // Find the full name by looking at the surrounding text
+                            const idx = bodyText.indexOf(brand);
+                            const snippet = bodyText.substring(idx, idx + 100);
+                            const nameMatch = snippet.match(/^([^\\n]+)/);
+                            const name = nameMatch ? nameMatch[1].trim() : brand;
+                            hotels.push({ name: name, source: 'text-search' });
+                        }
+                    }
+                }
+
+                return hotels;
+            }""")
+
+            log(f"  Hotels extracted: {len(hotels)}")
+            for h in hotels:
+                log(f"    → {h}")
+
+            # If we still found nothing, dump page text for debugging
+            if not hotels:
+                lines = [l.strip() for l in page_text.split("\n") if l.strip()][:100]
+                log("  ── DEBUG: Page text (first 100 lines) ──")
+                for line in lines:
+                    log(f"  | {line[:150]}")
+                log("  ── END DEBUG ──")
+
+            # Get page content hash for change detection
+            content_hash = hashlib.sha256(page_text.encode("utf-8")).hexdigest()
+
+        except Exception as e:
+            log(f"ERROR during browser navigation: {e}")
+            raise
+        finally:
+            browser.close()
+
+    # Deduplicate hotels by name
     seen = set()
-    unique_hotels = []
+    unique = []
     for h in hotels:
-        name = h.get("name", "").lower()
-        if name not in seen:
+        name = h.get("name", "").lower().strip()
+        if name and name not in seen and len(name) > 3:
             seen.add(name)
-            unique_hotels.append(h)
+            unique.append(h)
 
-    return unique_hotels
-
-
-def extract_hotel_from_element(el, blacklist):
-    """Extract hotel info from a single card element."""
-    hotel = {}
-
-    # ── Name: try headings, then links, then any prominent text ──
-    for sel in ["h2", "h3", "h4", "h5",
-                "a[class*='name']", "a[class*='title']",
-                "[class*='hotel-name']", "[class*='hotelName']",
-                "[class*='property-name']", "[class*='propertyName']",
-                "a"]:
-        name_el = el.select_one(sel)
-        if name_el:
-            text = name_el.get_text(strip=True)
-            if text and len(text) > 3 and text.lower() not in blacklist:
-                hotel["name"] = text
-                break
-
-    # ── Availability badge ───────────────────────────────────────
-    for sel in ["[class*='badge']", "[class*='avail']", "[class*='status']",
-                "[class*='sold']", "[class*='inventory']", "[class*='tag']",
-                "[class*='label']"]:
-        badge_el = el.select_one(sel)
-        if badge_el:
-            text = badge_el.get_text(strip=True)
-            if text and any(kw in text.lower() for kw in ["room", "avail", "sold", "wait", "full"]):
-                hotel["status"] = text
-                break
-
-    # Also check for "Rooms available" or "Sold out" anywhere in the card text
-    if "status" not in hotel:
-        card_text = el.get_text(strip=True).lower()
-        if "rooms available" in card_text:
-            hotel["status"] = "Rooms available"
-        elif "sold out" in card_text:
-            hotel["status"] = "Sold out"
-        elif "waitlist" in card_text:
-            hotel["status"] = "Waitlist"
-
-    # ── Price ────────────────────────────────────────────────────
-    price_match = re.search(r'(\d{2,4}\.\d{2})\s*USD', el.get_text())
-    if price_match:
-        hotel["price"] = f"{price_match.group(1)} USD"
-
-    # ── Distance ─────────────────────────────────────────────────
-    dist_match = re.search(r'([\d.]+)\s*miles?\s*(?:to\s*event)?', el.get_text(), re.IGNORECASE)
-    if dist_match:
-        hotel["distance"] = f"{dist_match.group(1)} miles"
-
-    return hotel
-
-
-def compute_content_hash(html):
-    """
-    Hash page content after removing dynamic elements (tokens, sessions, etc.)
-    so only real content changes trigger alerts.
-    """
-    soup = BeautifulSoup(html, "html.parser")
-
-    for tag in soup.find_all(["script", "style", "noscript", "link", "meta"]):
-        tag.decompose()
-    for inp in soup.find_all("input", {"type": "hidden"}):
-        inp.decompose()
-
-    text = soup.get_text(separator=" ", strip=True)
-    text = re.sub(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', '', text)
-    text = re.sub(r'\b\d{10,}\b', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return unique, content_hash
 
 
 def load_state():
@@ -580,7 +385,7 @@ def has_meaningful_changes(changes):
 
 
 def format_message(changes, hotels, is_first_run):
-    book_url = HOTELS_URL
+    book_url = f"{BASE_URL}{EVENT_PATH}/list/hotels"
 
     if is_first_run:
         msg = "🏨 <b>Hotel Monitor Started — MFF 2026</b>\n\n"
@@ -588,8 +393,15 @@ def format_message(changes, hotels, is_first_run):
             msg += f"Currently tracking <b>{len(hotels)}</b> hotel(s):\n\n"
             for h in hotels:
                 status = h.get("status", "")
-                status_icon = "🟢" if "avail" in status.lower() else "🔴" if "sold" in status.lower() else "⚪"
-                msg += f"{status_icon} <b>{h.get('name', '?')}</b>\n"
+                if "avail" in status.lower():
+                    icon = "🟢"
+                elif "sold" in status.lower():
+                    icon = "🔴"
+                elif "wait" in status.lower():
+                    icon = "🟡"
+                else:
+                    icon = "⚪"
+                msg += f"{icon} <b>{h.get('name', '?')}</b>\n"
                 if h.get("price"):
                     msg += f"   💰 {h['price']}\n"
                 if h.get("distance"):
@@ -599,7 +411,7 @@ def format_message(changes, hotels, is_first_run):
                 msg += "\n"
         else:
             msg += "No hotels listed yet — monitoring for when they appear.\n\n"
-        msg += f"Checking every 5 min. You'll be notified of any changes."
+        msg += "Checking every 5 min. You'll be notified of any changes."
         msg += f"\n\n🔗 <a href='{book_url}'>Booking page</a>"
         return msg
 
@@ -620,9 +432,10 @@ def format_message(changes, hotels, is_first_run):
         msg += f"🔄 <b>CHANGED:</b> {c['name']}\n"
         for field, (old_val, new_val) in c.get("diffs", {}).items():
             label = field.capitalize()
-            if "sold" in new_val.lower() if isinstance(new_val, str) else False:
+            new_str = str(new_val)
+            if "sold" in new_str.lower():
                 msg += f"   {label}: {old_val} → 🔴 <b>{new_val}</b>\n"
-            elif "avail" in new_val.lower() if isinstance(new_val, str) else False:
+            elif "avail" in new_str.lower():
                 msg += f"   {label}: {old_val} → 🟢 <b>{new_val}</b>\n"
             else:
                 msg += f"   {label}: {old_val} → <b>{new_val}</b>\n"
@@ -648,7 +461,7 @@ def send_telegram(message):
         "disable_web_page_preview": True,
     }
     try:
-        resp = requests.post(url, json=payload, timeout=15)
+        resp = http_requests.post(url, json=payload, timeout=15)
         if resp.ok:
             log("✅ Telegram notification sent!")
         else:
@@ -678,50 +491,26 @@ def main():
         log(f"Last check: {old_state.get('last_check', 'unknown')}")
         log(f"Known hotels: {len(old_state.get('hotels', []))}")
 
-    # ── Fetch the hotel list page ──────────────────────────────
-    session = create_session()
+    # ── Fetch hotels using headless browser ────────────────────
     try:
-        html, final_url = fetch_hotel_page(session)
+        hotels, content_hash = fetch_hotels_with_browser()
     except Exception as e:
-        log(f"ERROR: Failed to fetch page — {e}")
+        log(f"ERROR: {e}")
         if not is_first_run:
             send_telegram(
                 f"⚠️ <b>Monitor Error</b>\n\n"
-                f"Couldn't reach the booking page:\n<code>{e}</code>\n\n"
+                f"Failed to check hotels:\n<code>{str(e)[:200]}</code>\n\n"
                 f"Will retry in 5 minutes."
             )
         sys.exit(1)
 
-    if not html:
-        log("ERROR: Empty page received")
-        sys.exit(1)
-
-    log(f"Final URL: {final_url}")
-    log(f"Page size: {len(html)} bytes")
-
-    # ── Detect what page we ended up on ────────────────────────
-    page_type = detect_page_type(html, final_url)
-    log(f"Final page type: {page_type}")
-
-    if page_type != "hotel_list":
-        log(f"⚠ WARNING: Did not reach hotel list page! Got '{page_type}' instead.")
-        save_debug_page(html, "unexpected_final_page")
-
-    # ── Parse hotels ───────────────────────────────────────────
-    hotels = parse_hotels(html)
-    content_hash = compute_content_hash(html)
-
     log(f"Content hash: {content_hash[:16]}...")
     log(f"Hotels found: {len(hotels)}")
-    for h in hotels:
-        log(f"  → {h}")
 
     new_state = {
         "content_hash": content_hash,
         "hotels": hotels,
         "last_check": datetime.now(timezone.utc).isoformat(),
-        "final_url": final_url,
-        "page_type": page_type,
     }
 
     # ── Compare and notify ─────────────────────────────────────
