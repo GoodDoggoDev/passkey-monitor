@@ -423,8 +423,6 @@ def has_meaningful_changes(changes):
     return (
         changes["new_hotels"]
         or changes["removed_hotels"]
-        or changes["changed_hotels"]
-        or changes["hash_changed"]
     )
 
 
@@ -561,20 +559,19 @@ def main():
     if is_first_run:
         log("First run — saving baseline and sending startup message")
         send_telegram(format_message(None, hotels, True))
-        save_state(new_state)
     else:
         changes = detect_changes(old_state, content_hash, hotels)
         if has_meaningful_changes(changes):
-            log("🚨 CHANGES DETECTED!")
-            for key in ["new_hotels", "removed_hotels", "changed_hotels"]:
+            log("🚨 HOTEL LIST CHANGED!")
+            for key in ["new_hotels", "removed_hotels"]:
                 if changes[key]:
                     log(f"  {key}: {changes[key]}")
             send_telegram(format_message(changes, hotels, False))
-            save_state(new_state)
         else:
-            log("No changes detected ✓")
-            old_state["last_check"] = new_state["last_check"]
-            save_state(old_state)
+            log("No new hotels — same list ✓")
+
+    # Always save latest state
+    save_state(new_state)
 
     log("Done!")
 
