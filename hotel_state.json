@@ -1,1 +1,18 @@
-{}
+{
+  "content_hash": "c22edf96f41703ed26337b0757b4ef5f2c6a560bb3d403302a19ddae5369c262",
+  "hotels": [
+    {
+      "name": "Holiday Inn Chicago O'Hare Airport",
+      "source": "text-search"
+    },
+    {
+      "name": "Spark by Hilton Des Plaines Chicago O'Hare",
+      "source": "text-search"
+    },
+    {
+      "name": "Staybridge Suites Chicago O'Hare - Rosemont, an IHG Hotel",
+      "source": "text-search"
+    }
+  ],
+  "last_check": "2026-10-19T03:10:14.439605+00:00"
+}
