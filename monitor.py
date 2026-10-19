@@ -90,93 +90,137 @@ def fetch_hotels_with_browser():
             page.wait_for_load_state("domcontentloaded", timeout=15000)
             log(f"  Landed on: {page.url}")
 
-            # ── STEP 3: Fill in dates and search ──────────────
-            log("STEP 3: Filling in dates and searching...")
-
-            # Wait for the date inputs to appear
+            # ── STEP 3: Select dates using calendar picker ──────
+            log("STEP 3: Selecting dates via calendar picker...")
             page.wait_for_timeout(2000)
 
-            # Try to find and fill the check-in date
-            checkin_filled = False
-            checkout_filled = False
+            # -- Click the Check-in input box to open calendar --
+            log("  Opening check-in calendar...")
+            try:
+                # The check-in box is an input near the "Check-in" label
+                # Try clicking directly on the input area
+                checkin_input = page.locator("input").first
+                # Find all inputs and click the first empty one (the check-in field)
+                inputs = page.locator("input[type='text'], input:not([type])")
+                for i in range(min(inputs.count(), 6)):
+                    inp = inputs.nth(i)
+                    try:
+                        if inp.is_visible(timeout=500):
+                            val = inp.input_value()
+                            if not val or val.strip() == "":
+                                inp.click()
+                                log(f"  ✓ Clicked check-in input (input #{i})")
+                                break
+                    except Exception:
+                        continue
+            except Exception as e:
+                log(f"  ⚠ Error clicking check-in: {e}")
 
-            # Look for date input fields — try various selectors
-            date_selectors = [
-                # Input fields with placeholder or label
-                "input[placeholder*='Check']",
-                "input[aria-label*='Check']",
-                "input[aria-label*='check']",
-                "input[name*='checkIn']",
-                "input[name*='checkin']",
-                "input[name*='arrival']",
-                "input[id*='checkIn']",
-                "input[id*='checkin']",
-                # Generic date inputs
-                "input[type='date']",
-                "input[type='text'][class*='date']",
-            ]
+            # Wait for calendar popup
+            page.wait_for_timeout(1500)
 
-            # Try to find check-in input
-            for sel in date_selectors:
-                try:
-                    inputs = page.locator(sel)
-                    count = inputs.count()
-                    if count >= 1:
-                        log(f"  Found {count} date input(s) with selector: {sel}")
-                        # First match = check-in, second = checkout
-                        inputs.first.click()
-                        inputs.first.fill(CHECKIN_DATE)
-                        checkin_filled = True
-                        if count >= 2:
-                            inputs.nth(1).click()
-                            inputs.nth(1).fill(CHECKOUT_DATE)
-                            checkout_filled = True
-                        break
-                except Exception:
-                    continue
+            # -- Click day 3 in the calendar --
+            log("  Clicking day 3 (check-in)...")
+            day3_clicked = False
+            try:
+                # The calendar shows day numbers as clickable elements
+                # Find all elements with text "3" and click the one that's
+                # exactly "3" (not 13, 23, 30, 31)
+                candidates = page.locator("text=/^3$/")
+                count = candidates.count()
+                log(f"  Found {count} elements matching exact '3'")
+                for i in range(count):
+                    el = candidates.nth(i)
+                    try:
+                        if el.is_visible(timeout=300):
+                            el.click()
+                            day3_clicked = True
+                            log(f"  ✓ Clicked day 3 (match #{i})")
+                            break
+                    except Exception:
+                        continue
+            except Exception as e:
+                log(f"  ⚠ Could not click day 3: {e}")
 
-            if not checkin_filled:
-                log("  Could not find date inputs — trying to click Search anyway...")
+            page.wait_for_timeout(1500)
 
-            # Click the Search button
+            # -- Now select checkout date (Dec 7) --
+            log("  Selecting checkout date (Dec 7)...")
+
+            # The checkout calendar might auto-open, or we need to click the checkout box
+            # Try clicking the checkout input first
+            try:
+                inputs = page.locator("input[type='text'], input:not([type])")
+                for i in range(min(inputs.count(), 6)):
+                    inp = inputs.nth(i)
+                    try:
+                        if inp.is_visible(timeout=500):
+                            val = inp.input_value()
+                            # Checkout input: either empty, or the second visible input
+                            # The check-in should now be filled (showing Dec 3)
+                            if not val or val.strip() == "":
+                                inp.click()
+                                log(f"  ✓ Clicked checkout input (input #{i})")
+                                break
+                    except Exception:
+                        continue
+            except Exception as e:
+                log(f"  ⚠ Error clicking checkout: {e}")
+
+            page.wait_for_timeout(1500)
+
+            # Click day 7 in the calendar
+            log("  Clicking day 7 (checkout)...")
+            day7_clicked = False
+            try:
+                candidates = page.locator("text=/^7$/")
+                count = candidates.count()
+                log(f"  Found {count} elements matching exact '7'")
+                for i in range(count):
+                    el = candidates.nth(i)
+                    try:
+                        if el.is_visible(timeout=300):
+                            el.click()
+                            day7_clicked = True
+                            log(f"  ✓ Clicked day 7 (match #{i})")
+                            break
+                    except Exception:
+                        continue
+            except Exception as e:
+                log(f"  ⚠ Could not click day 7: {e}")
+
+            page.wait_for_timeout(1000)
+
+            # -- Click Search button --
+            log("  Clicking Search...")
             search_clicked = False
-            search_selectors = [
-                "button:has-text('Search')",
-                "a:has-text('Search')",
-                "input[value='Search']",
-                "button[type='submit']:has-text('Search')",
-                "[class*='search'] button",
-            ]
-            for sel in search_selectors:
+            for sel in ["button:has-text('Search')", "a:has-text('Search')"]:
                 try:
                     btn = page.locator(sel).first
                     if btn.is_visible(timeout=2000):
                         btn.click()
                         search_clicked = True
-                        log(f"  Clicked Search button ({sel})")
+                        log(f"  ✓ Clicked Search ({sel})")
                         break
                 except Exception:
                     continue
 
             if not search_clicked:
-                log("  ⚠ Could not find Search button — trying direct navigation...")
-                page.goto(f"{BASE_URL}{EVENT_PATH}/list/hotels", wait_until="domcontentloaded", timeout=30000)
+                log("  ⚠ Could not click Search")
 
             # ── STEP 4: Wait for hotel list to load ───────────
             log("STEP 4: Waiting for hotel list to load...")
-
-            # Wait for hotel-related content to appear
             try:
                 page.wait_for_selector(
-                    "text=Hotels for, text=Rooms available, text=Sold out, text=rooms available",
-                    timeout=15000,
+                    "text=Hotels for, text=Rooms available, text=Sold out",
+                    timeout=20000,
                 )
-                log("  Hotel list content detected!")
+                log("  ✓ Hotel list content detected!")
             except PWTimeout:
-                log("  ⚠ Timeout waiting for hotel content")
+                log("  ⚠ Timeout — checking page anyway...")
 
-            # Give it extra time to fully render
-            page.wait_for_timeout(3000)
+            # Extra time for all hotel cards to render
+            page.wait_for_timeout(5000)
             log(f"  Final URL: {page.url}")
 
             # ── STEP 5: Extract hotel data from DOM ───────────
