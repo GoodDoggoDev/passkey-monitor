@@ -1,8 +1,12 @@
 {
-  "content_hash": "92f5d2ee693aebe29c5a923948c52b6d6f33cc805aca7d7e5580298ef0764e15",
+  "content_hash": "8a3938722ed0c5f84968ae6776d0e8e7eb2a3756952104ae3ba9b038e265704d",
   "hotels": [
     {
       "name": "Holiday Inn Chicago O'Hare Airport",
+      "source": "text-search"
+    },
+    {
+      "name": "Sonesta Chicago O'Hare Airport Rosemont",
       "source": "text-search"
     },
     {
@@ -14,5 +18,5 @@
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-19T03:30:33.171764+00:00"
+  "last_check": "2026-10-19T04:07:08.385735+00:00"
 }
