@@ -22,8 +22,8 @@ from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode
 
 # ── Config (from GitHub Secrets / environment) ─────────────────
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+TELEGRAM_BOT_TOKEN = os.environ.get("8871228109:AAEw7_KWUahMtcLOHIQD7iwj0x5a8Z7BBr8")
+TELEGRAM_CHAT_ID = os.environ.get("5397005458")
 
 # ── Passkey URLs ───────────────────────────────────────────────
 BASE_URL = "https://book.passkey.com"
