@@ -569,6 +569,12 @@ def main():
             send_telegram(format_message(changes, hotels, False))
         else:
             log("No new hotels — same list ✓")
+            hotel_names = ", ".join(h.get("name", "?") for h in hotels) if hotels else "none"
+            send_telegram(
+                f"✅ <b>No new hotels — same list</b>\n\n"
+                f"Currently tracking <b>{len(hotels)}</b> hotel(s): {hotel_names}\n\n"
+                f"Next check in 5 min."
+            )
 
     # Always save latest state
     save_state(new_state)
