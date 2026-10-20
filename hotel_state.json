@@ -1,5 +1,5 @@
 {
-  "content_hash": "de482608f0a441d6f9376bde6ea2e9665b9f065367d6fc8c176663209d78753a",
+  "content_hash": "cea64e5ee4950cbd00b5e6b3381c39d9b9ba42aee6c5f2043be56e73d6a72577",
   "hotels": [
     {
       "name": "Holiday Inn Chicago O'Hare Airport",
@@ -14,5 +14,5 @@
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-20T14:35:11.740832+00:00"
+  "last_check": "2026-10-20T18:41:45.285994+00:00"
 }
