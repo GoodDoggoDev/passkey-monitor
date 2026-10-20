@@ -1,8 +1,12 @@
 {
-  "content_hash": "cea64e5ee4950cbd00b5e6b3381c39d9b9ba42aee6c5f2043be56e73d6a72577",
+  "content_hash": "24e863a442d0ad6cf6e6a68baa9733f8a86bfad3aeb44850cab8c8495cc7e06e",
   "hotels": [
     {
       "name": "Holiday Inn Chicago O'Hare Airport",
+      "source": "text-search"
+    },
+    {
+      "name": "Hyatt Centric Chicago O'Hare",
       "source": "text-search"
     },
     {
@@ -14,5 +18,5 @@
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-20T18:41:45.285994+00:00"
+  "last_check": "2026-10-20T21:53:20.029094+00:00"
 }
