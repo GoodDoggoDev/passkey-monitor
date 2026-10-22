@@ -1,6 +1,10 @@
 {
-  "content_hash": "8f62a5c079bc1a26449315f4c6add1d99c9930179e7daee9eb87f96c5d13ea99",
+  "content_hash": "ff1f269f9ac986e6f9efe0e97ac5740c8bb121bd512213b1303897f932718f31",
   "hotels": [
+    {
+      "name": "Sonesta Chicago O'Hare Airport Rosemont",
+      "source": "text-search"
+    },
     {
       "name": "Spark by Hilton Des Plaines Chicago O'Hare",
       "source": "text-search"
@@ -10,5 +14,5 @@
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-22T19:18:15.572788+00:00"
+  "last_check": "2026-10-22T22:25:55.556459+00:00"
 }
