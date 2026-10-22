@@ -1,10 +1,6 @@
 {
-  "content_hash": "9fb6502df2e160c2815ee81fcde50c392f1b6f5579fb815f17917d74a04f9774",
+  "content_hash": "8f62a5c079bc1a26449315f4c6add1d99c9930179e7daee9eb87f96c5d13ea99",
   "hotels": [
-    {
-      "name": "Holiday Inn Chicago O'Hare Airport",
-      "source": "text-search"
-    },
     {
       "name": "Spark by Hilton Des Plaines Chicago O'Hare",
       "source": "text-search"
@@ -14,5 +10,5 @@
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-22T15:22:23.816933+00:00"
+  "last_check": "2026-10-22T19:18:15.572788+00:00"
 }
