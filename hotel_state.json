@@ -1,5 +1,5 @@
 {
-  "content_hash": "db72203af2a36eca46dc6aa81df08a91104758567a96c2677f3360c23f4cba99",
+  "content_hash": "9b74b1bf11a2305cf4d3eac93c1b9e178bead06cacdc2375ab803f9ff6adc479",
   "hotels": [
     {
       "name": "Sonesta Chicago O'Hare Airport Rosemont",
@@ -14,5 +14,5 @@
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-23T00:47:05.297220+00:00"
+  "last_check": "2026-10-23T05:27:06.373648+00:00"
 }
