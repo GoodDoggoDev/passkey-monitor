@@ -1,12 +1,8 @@
 {
-  "content_hash": "6baed4979aab9b5e4d8549a803f8bee8249d3fcd35292936c3cdfc4d3c40eb76",
+  "content_hash": "5b734c74f00c67d4f4d333f84d0ee0afbb2b71e1d8547d12ec7cfd9e44796c90",
   "hotels": [
     {
       "name": "Courtyard Chicago O'Hare, IL",
-      "source": "text-search"
-    },
-    {
-      "name": "Marriott Suites O'Hare",
       "source": "text-search"
     },
     {
@@ -18,5 +14,5 @@
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-24T05:02:02.149396+00:00"
+  "last_check": "2026-10-24T09:24:55.314226+00:00"
 }
