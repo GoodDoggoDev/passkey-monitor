@@ -1,5 +1,5 @@
 {
-  "content_hash": "5b734c74f00c67d4f4d333f84d0ee0afbb2b71e1d8547d12ec7cfd9e44796c90",
+  "content_hash": "1ac3b1c5a3f1df6616fb529a57576eaba8603fc5ce4c67e36726260c468127c9",
   "hotels": [
     {
       "name": "Courtyard Chicago O'Hare, IL",
@@ -14,5 +14,5 @@
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-24T09:24:55.314226+00:00"
+  "last_check": "2026-10-24T13:26:42.842100+00:00"
 }
