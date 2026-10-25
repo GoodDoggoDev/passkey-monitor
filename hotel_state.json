@@ -1,10 +1,10 @@
 {
-  "content_hash": "9281195992b1bb8d643d2ed8f8ee10c626326b7a9691a324acd0f6e04c6e749c",
+  "content_hash": "6f325940254a2000f442344fa8543b62e487599dabce45aa0d8cbab26d8ca7f4",
   "hotels": [
     {
       "name": "Staybridge Suites Chicago O'Hare - Rosemont, an IHG Hotel",
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-25T15:54:46.745759+00:00"
+  "last_check": "2026-10-25T18:36:31.156853+00:00"
 }
