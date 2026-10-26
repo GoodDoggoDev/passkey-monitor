@@ -1,14 +1,10 @@
 {
-  "content_hash": "14dca0c497786a75eb69df675f5e7c2134551ec889f5ccdc9261a56ced9d7520",
+  "content_hash": "ca1b860578e8553a4c5550f1395e39437e88f96f88c375c5303fb6aaea94f2da",
   "hotels": [
-    {
-      "name": "Sonesta Chicago O'Hare Airport Rosemont",
-      "source": "text-search"
-    },
     {
       "name": "Staybridge Suites Chicago O'Hare - Rosemont, an IHG Hotel",
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-26T06:16:48.443440+00:00"
+  "last_check": "2026-10-26T19:15:38.913284+00:00"
 }
