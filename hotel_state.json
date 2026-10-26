@@ -1,10 +1,14 @@
 {
-  "content_hash": "91f6f70a86c3ecbd167cb787f0d25b2843aaed112113451063b25481eceae54f",
+  "content_hash": "6de1abc4059d965858bf8be24bcc4b3543ed3bf49880a22b1ee4260bf57b4f0b",
   "hotels": [
+    {
+      "name": "Courtyard Chicago O'Hare, IL",
+      "source": "text-search"
+    },
     {
       "name": "Staybridge Suites Chicago O'Hare - Rosemont, an IHG Hotel",
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-25T23:16:17.817607+00:00"
+  "last_check": "2026-10-26T01:14:59.723691+00:00"
 }
