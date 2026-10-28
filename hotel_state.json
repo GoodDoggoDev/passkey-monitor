@@ -1,5 +1,26 @@
 {
-  "content_hash": "689388a558b84e3479f591fdac54cef72ac31576d6eab184b77989287ae74646",
-  "hotels": [],
-  "last_check": "2026-10-28T14:19:47.395315+00:00"
+  "content_hash": "0d4e5625dd8558d134d6d069fc493d819a17d37cab2fd0cfe6c30c0434a49895",
+  "hotels": [
+    {
+      "name": "Aloft Chicago O'Hare",
+      "source": "text-search"
+    },
+    {
+      "name": "Courtyard Chicago O'Hare, IL",
+      "source": "text-search"
+    },
+    {
+      "name": "Crowne Plaza Chicago O'Hare Hotel & Conf Ctr",
+      "source": "text-search"
+    },
+    {
+      "name": "Hyatt Centric Chicago O'Hare",
+      "source": "text-search"
+    },
+    {
+      "name": "Hyatt Regency O'Hare Chicago",
+      "source": "text-search"
+    }
+  ],
+  "last_check": "2026-10-28T19:40:12.216179+00:00"
 }
