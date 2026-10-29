@@ -1,5 +1,5 @@
 {
-  "content_hash": "43a545aedfeff7498b1961791f86a8210a67913c16a62fcc0c51378dac6cb436",
+  "content_hash": "870bfd39dd9e91b0c0dd4619c93a08a2fdda27f3cf1d7a46a6ce20e44e899cbb",
   "hotels": [
     {
       "name": "Courtyard Chicago O'Hare, IL",
@@ -10,9 +10,9 @@
       "source": "text-search"
     },
     {
-      "name": "Hyatt Centric Chicago O'Hare",
+      "name": "Sonesta Chicago O'Hare Airport Rosemont",
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-28T23:31:26.052686+00:00"
+  "last_check": "2026-10-29T02:43:54.550400+00:00"
 }
