@@ -1,10 +1,6 @@
 {
-  "content_hash": "9850a40e711e19862fdb8f6dcf999b21f3c999a5f0b1f598c15c6ff1af89d258",
+  "content_hash": "3d89087a229fbc8b463a6c038eec57bf3349f03cce37137a8e048e192dbd176b",
   "hotels": [
-    {
-      "name": "Courtyard Chicago O'Hare, IL",
-      "source": "text-search"
-    },
     {
       "name": "Hilton Garden Inn Chicago O'Hare Airport",
       "source": "text-search"
@@ -18,5 +14,5 @@
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-29T08:56:17.307692+00:00"
+  "last_check": "2026-10-29T15:46:15.214304+00:00"
 }
