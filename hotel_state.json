@@ -1,5 +1,5 @@
 {
-  "content_hash": "b55a69dcb1ddedaabdfaf9fc7e96a0f825b5f60d3a67d9d5351a6a3784cb743c",
+  "content_hash": "25a9514526c23c32208b9b13783e5ed50a989d84f5400d7aac1a5d5df66ca3ca",
   "hotels": [
     {
       "name": "Hilton Garden Inn Chicago O'Hare Airport",
@@ -10,5 +10,5 @@
       "source": "text-search"
     }
   ],
-  "last_check": "2026-10-30T12:41:41.581856+00:00"
+  "last_check": "2026-10-30T18:13:30.637258+00:00"
 }
