@@ -1,5 +1,10 @@
 {
-  "content_hash": "f83b2961ce6310e55e15f9c7a579ac8530d25b34da9fbe02d6699ac36bdd0607",
-  "hotels": [],
-  "last_check": "2026-11-01T21:12:18.943450+00:00"
+  "content_hash": "7d0253cf28aee8077b00a68b3ea8f7519ef9de0c09dde0ab7845337eb457aeee",
+  "hotels": [
+    {
+      "name": "Spark by Hilton Des Plaines Chicago O'Hare",
+      "source": "text-search"
+    }
+  ],
+  "last_check": "2026-11-02T00:43:18.179119+00:00"
 }
