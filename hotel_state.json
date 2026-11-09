@@ -1,14 +1,10 @@
 {
-  "content_hash": "37ab6281e0226c5c47b7f9187b75e9544d4639aa97131cacd7a15be03feee18c",
+  "content_hash": "e0cb6e2e3fb37135edc4b4299cf5fc8526cf964d06d51343b24aa4993addf84d",
   "hotels": [
-    {
-      "name": "Crowne Plaza Chicago O'Hare Hotel & Conf Ctr",
-      "source": "text-search"
-    },
     {
       "name": "Spark by Hilton Des Plaines Chicago O'Hare",
       "source": "text-search"
     }
   ],
-  "last_check": "2026-11-08T22:24:18.466240+00:00"
+  "last_check": "2026-11-09T01:48:36.938165+00:00"
 }
