@@ -1,5 +1,10 @@
 {
-  "content_hash": "b99d0dc576a6524c587511724e4edece5df56f6e9ba5d8690ef5788ba50c3743",
-  "hotels": [],
-  "last_check": "2026-11-10T09:39:42.735095+00:00"
+  "content_hash": "26b5433f4b6a8ab89a5783866c48209a505e9fd3a24976bd5036b2ecacb12ac9",
+  "hotels": [
+    {
+      "name": "Hyatt Centric Chicago O'Hare",
+      "source": "text-search"
+    }
+  ],
+  "last_check": "2026-11-10T17:17:36.613496+00:00"
 }
