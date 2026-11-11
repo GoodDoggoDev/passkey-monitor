@@ -1,10 +1,5 @@
 {
-  "content_hash": "0876234319c2ff24ff2820eecc89aed045feef78e6e938d93fffee526ddef7dd",
-  "hotels": [
-    {
-      "name": "Aloft Chicago O'Hare",
-      "source": "text-search"
-    }
-  ],
-  "last_check": "2026-11-10T22:25:21.470563+00:00"
+  "content_hash": "11a1633e30706b2b1c444fe2fd12a243049337a3ba5d6d706f5f0b6d236eda05",
+  "hotels": [],
+  "last_check": "2026-11-11T02:02:33.056667+00:00"
 }
