@@ -1,26 +1,10 @@
 {
-  "content_hash": "c34660237c4e11126c7f21efc0784890cedc5245434b3fd4971f35650c7ebb68",
+  "content_hash": "4e6d84e939b1b89d0bed754e7382aecd5f99d79aa106f0f02dd8c387993c7851",
   "hotels": [
-    {
-      "name": "Courtyard Chicago O'Hare, IL",
-      "source": "text-search"
-    },
-    {
-      "name": "Hilton Garden Inn Chicago O'Hare Airport",
-      "source": "text-search"
-    },
-    {
-      "name": "Loews Chicago O'Hare",
-      "source": "text-search"
-    },
-    {
-      "name": "Spark by Hilton Des Plaines Chicago O'Hare",
-      "source": "text-search"
-    },
     {
       "name": "Staybridge Suites Chicago O'Hare - Rosemont, an IHG Hotel",
       "source": "text-search"
     }
   ],
-  "last_check": "2026-11-12T03:59:41.182779+00:00"
+  "last_check": "2026-11-12T12:17:46.922655+00:00"
 }
